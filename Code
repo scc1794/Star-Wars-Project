@@ -1,0 +1,390 @@
+Star Wars Project
+Table of Contents
+1) Introduction
+2) Cleaning and Mapping Yes/No Columns
+3) Cleaning and Mapping Checkbox Columns
+4) Cleaning the Ranking Columns
+5) Finding the Highest-Ranked Movie
+6) Finding the Most Viewed Movie
+7) Exploring the Data by Binary Segments
+8) Next Steps
+
+Introduction
+While waiting for Star Wars: The Force Awakens to come out, the team at FiveThirtyEight became interested in answering some questions about Star Wars fans. In particular, they wondered: does the rest of America realize that “The Empire Strikes Back” is clearly the best of the bunch?
+
+The team needed to collect data addressing this question. To do this, they surveyed Star Wars fans using the online tool SurveyMonkey. They received 835 total responses, which you download from their GitHub repository.
+
+#Read in data set
+import pandas as pd
+import numpy as np
+star_wars = pd.read_csv("star_wars.csv", encoding="ISO-8859-1")
+#We use this encoding since the data contains characters that arent in 
+#Python's defaul utf-8 encoding
+star_wars.head(10)
+#Remove rows where RespondentID is NaN
+respondent_not_null = pd.notnull(star_wars['RespondentID'])
+star_wars = star_wars[respondent_not_null]
+star_wars[star_wars['RespondentID'] == np.nan]
+Filtering for rows where RespondentID is NaN we got no results, meaning we successfully removed rows where RespondentID is Null.
+
+Cleaning and Mapping Yes/No Columns
+Take a look at the next two columns, which are:
+
+Have you seen any of the 6 films in the Star Wars franchise?
+Do you consider yourself to be a fan of the Star Wars film franchise?
+Both columns are currently string types, because the main values they contain are Yes and No. We can make the data a bit easier to analyze down the road by converting each column to a Boolean having only the values True, False, and NaN. Booleans are easier to work with because we can select the rows that are True or False without having to do a string comparison.
+
+We will convert the the two columns listed above to Boolean type.
+
+#Convert column use mapping
+yes_no = {'Yes': True, 'No': False}
+star_wars['Have you seen any of the 6 films in the Star Wars franchise?'] = star_wars['Have you seen any of the 6 films in the Star Wars franchise?'].map(yes_no)
+star_wars['Do you consider yourself to be a fan of the Star Wars film franchise?'] = star_wars['Do you consider yourself to be a fan of the Star Wars film franchise?'].map(yes_no)
+print(star_wars['Do you consider yourself to be a fan of the Star Wars film franchise?'].value_counts(dropna=False))
+print(star_wars['Have you seen any of the 6 films in the Star Wars franchise?'].value_counts(dropna=False))
+​
+star_wars.head()
+We've converted the two columns above to Boolean type. The Do you consider yourself to be a fan of the Star Wars film franchise? column has 350 records with a Null value, while the Have you seen any of the 6 films in the Star Wars franchise? column has no Null values
+
+Cleaning and Mapping Checkbox Columns
+The next six columns represent a single checkbox question. The respondents checked off a series of boxes in response to the question, Which of the following Star Wars films have you seen? Please select all that apply. The next 6 columns are the prequel movies then sequel movies in order from 1-6 (1 being Phantom Menace, 6 being Return of the Jedi).
+
+For each of these columns, if the value in a cell is the name of the movie, that means the respondent saw the movie. If the value is NaN, the respondent either didn't answer or didn't see the movie. We'll assume that they didn't see the movie.
+
+We'll need to convert each of these columns to a Boolean, then rename the column something more intuitive. We can convert the values the same way we did earlier, except that we'll need to include the movie title and NaN in the mapping dictionary.
+
+# Creating a dictionary for mapping checkbox column values
+column_names = star_wars.iloc[0, :].to_frame()
+movie_mapping = {}
+​
+for column_name in column_names.iloc[3:9, 0]:
+    movie_mapping[column_name] = True
+movie_mapping[np.nan] = False
+    
+movie_mapping
+​
+# Converting the checkbox columns to the Boolean type
+for column in star_wars.columns[3:9]:
+    star_wars[column] = star_wars[column].map(movie_mapping)
+#Rename columns 3-9 to seen_1, seen_2, etc.
+star_wars = star_wars.rename(columns={"Which of the following Star Wars films have you seen? Please select all that apply.": "seen_1"
+                                     , 'Unnamed: 4': 'seen_2'
+                                     , 'Unnamed: 5': 'seen_3'
+                                     , 'Unnamed: 6': 'seen_4'
+                                     , 'Unnamed: 7': 'seen_5'
+                                     , 'Unnamed: 8': 'seen_6'
+                                     }
+                            )
+star_wars.columns
+The checkbox columns now have easily interpretable names and are Boolean type.
+
+Cleaning the Ranking Columns
+The next six columns ask the respondent to rank the Star Wars movies in order of least favorite to most favorite. 1 means the film was the most favorite, and 6 means it was the least favorite. Each of the following columns can contain the value 1, 2, 3, 4, 5, 6, or NaN.
+
+The column names start with Please rank the Star Wars films in order of preference with 1 being your favorite film in the franchise and 6 being your least favorite film which shows the ranking for Episode I The Phantom Menace. After that the column names start with Unnamed: 10 and continue through Unnamed: 14 which is the ranking for Episode VI Return of the Jedi.
+
+We'll need to convert each column to a numeric type, though, then rename the columns so that we can tell what they represent more easily.
+
+#Convert columns to float type
+star_wars[star_wars.columns[9:15]] = star_wars[star_wars.columns[9:15]].astype(float)
+#Rename columns
+star_wars = star_wars.rename(columns = {'Please rank the Star Wars films in order of preference with 1 being your favorite film in the franchise and 6 being your least favorite film.': 'ranking_1'
+                                       , 'Unnamed: 10': 'ranking_2'
+                                       , 'Unnamed: 11': 'ranking_3'
+                                       , 'Unnamed: 12': 'ranking_4'
+                                       , 'Unnamed: 13': 'ranking_5'
+                                       , 'Unnamed: 14': 'ranking_6'
+                                       }
+                            )
+star_wars.head()
+​
+​
+We now have the correct data type and easy to interpret column names for the movie ranking columns.
+
+Finding the Highest-Ranked Movie
+Now that we've cleaned up the ranking columns, we can find the highest-ranked movie more quickly.
+
+mean_rankings = star_wars[star_wars.columns[9:15]].mean().reset_index()
+mean_rankings
+#Change labels from 'ranking' to 'episode' in mean ranking df
+mean_rankings['index'] = mean_rankings['index'].str.replace('ranking', 'episode')
+mean_rankings.columns = ['Episode', 'Ranking']
+# Resetting the index
+mean_rankings.set_index('Episode', inplace=True)
+mean_rankings
+#Plot mean rankings for each movie
+import matplotlib.pyplot as plt
+%matplotlib inline
+fix, ax = plt.subplots(figsize=(10,5))
+mean_rankings['Ranking'].sort_values().plot.bar(rot=0)
+ax.set_title('Star Wars Movies by Fan Ranking', fontsize=18)
+ax.set_ylabel('Average Ranking', fontsize=16)
+ax.tick_params(axis='both', labelsize=16, bottom = False, right = False)
+ax.spines['top'].set_visible(False)
+ax.spines['bottom'].set_visible(False)
+ax.spines['right'].set_visible(False)
+plt.show()
+So far we've renamed several of the columns and cleaned the data to make it easier to use. The above chart shows that Episode V The Empire Strikes Back has the lowest average ranking, which is good since a ranking of 1 means that is the respondent's favorite movie. On the opposite end of the spectrum is Episode III Revenge of the Sith, with an average ranking of 4.3. The original trilogy (4-6) all rank better than the prequel trilogy (1-3) which is not surprising since the original movies are typically better liked than the prequels.
+
+Finding the Most Viewed Movie
+Earlier in this project, we cleaned up the seen columns and converted their values to the Boolean type. Booleans consider True a 1, and False a 0. That means we can figure out how many people have seen each movie just by taking the sum of the column (even though they contain Boolean values).
+
+movie_views = star_wars[star_wars.columns[3:9]].sum().reset_index()
+movie_views
+#Rename columns
+movie_views.columns = ['Episode', 'Views']
+#Replace 'seen' with 'episode'
+movie_views['Episode'] = movie_views['Episode'].str.replace('seen', 'episode')
+#Reset index
+movie_views.set_index('Episode', inplace=True)
+movie_views
+import matplotlib.pyplot as plt
+%matplotlib inline
+fix, ax = plt.subplots(figsize=(10,5))
+movie_views['Views'].sort_values().plot.bar(rot=0)
+ax.set_title('Star Wars Movies by Views', fontsize=18)
+ax.set_ylabel('Number of Views', fontsize=16)
+ax.tick_params(axis='both', labelsize=16, bottom = False, right = False)
+ax.spines['top'].set_visible(False)
+ax.spines['bottom'].set_visible(False)
+ax.spines['right'].set_visible(False)
+plt.show()
+From the graph above, we can see that Episode V Empire Strikes Back has the most views while Episode III Revenge of the Sith has the least. Given that Empire Strikes Back is the highest rated Star Wars movie, it isn't surprising that it has the most views. Same with Revenge of the Sith being the least watched and having the worst reviews. It is surprising to see a large amount of people having watched Episode V without watching Episodes IV and VI since these form a trilogy. Watching all 3 movies is important to understand the whole story, so the people that only saw Episode V missed out. There is a similar phenomenon with the prequel trilogy as well.
+
+Exploring the Data by Binary Segments
+We know which movies the survey population as a whole has ranked the highest. Now let's examine how certain segments of the survey population responded. There are several columns that segment our data into two groups. Here are a few examples:
+
+Do you consider yourself to be a fan of the Star Wars film franchise? - True or False
+Do you consider yourself to be a fan of the Star Trek franchise? - Yes or No
+Gender - Male or Female
+We can split a dataframe into two groups based on a binary column by creating two subsets of that column.
+
+Fans vs Non-Fans
+#Split data into fans vs non-fans
+fan = star_wars[star_wars['Do you consider yourself to be a fan of the Star Wars film franchise?'] == 1][star_wars.columns[9:15]]
+not_fan = star_wars[star_wars['Do you consider yourself to be a fan of the Star Wars film franchise?'] == 0][star_wars.columns[9:15]]
+​
+#Calculate mean ranking per movie for fans vs non-fans
+fan_mean_rankings = fan.mean().reset_index()
+not_fan_rankings = not_fan.mean().reset_index()
+​
+#Replace 'ranking' with 'episode'
+fan_mean_rankings['index'] = fan_mean_rankings['index'].str.replace('ranking', 'episode')
+not_fan_rankings['index'] = not_fan_rankings['index'].str.replace('ranking', 'episode')
+​
+#Rename columns
+fan_mean_rankings.columns = ['Episode', 'Ranking']
+not_fan_rankings.columns = ['Episode', 'Ranking']
+​
+#Reset index
+fan_mean_rankings.set_index('Episode', inplace=True)
+not_fan_rankings.set_index('Episode', inplace=True)
+#Plot fan vs non-fan movie rankings
+labels = ['Episode 1', 'Episode 2', 'Episode 3', 'Episode 4', 'Episode 5', 'Episode 6']
+​
+#Specifying the label locations and the width of the bars
+x = np.arange(len(labels))
+width = 0.35
+​
+# Converting series to lists
+fan_list = fan_mean_rankings['Ranking'].values.tolist()   
+not_fan_list = not_fan_rankings['Ranking'].values.tolist()
+​
+fig, ax = plt.subplots(figsize = (10, 6))
+ax.bar(x - width/2, fan_list, width, label = 'Fans', color='Blue', align='center')
+ax.bar(x + width/2, not_fan_list, width, label = 'Not Fans', color='Red', align='center')
+ax.set_title('Fan vs Non-Fan Rankings', fontsize=18)
+ax.set_xticks(x)
+ax.set_xticklabels(labels, fontsize=16)
+ax.set_ylabel('Average Ranking', fontsize=16)
+ax.set_ylim(0, 6)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.spines['bottom'].set_visible(False)
+ax.tick_params(bottom="off", left="off", top="off", right="off")
+ax.legend(fontsize=16, frameon=False)
+​
+fig.tight_layout()
+​
+plt.show()
+As a Star Wars fan myself, the findings from the chart above confirm my suspicions. Star Wars fans tend to dislike the prequels (Episodes 1-3) compared to the originals (4-6), and the chart above shows that fans ranked the originals above the prequels moreso than non-fans. Non-fans have a much more even distribution across the 6 movies, while fans heavily weigh towards the originals. My theory is that the age range of self-labeled fans is older than the non-fans, and older fans usually enjoy the original movies much more than the prequels.
+
+# Split data into fans vs non-fans with views column
+fans = star_wars[star_wars['Do you consider yourself to be a fan of the Star Wars film franchise?'] == 1][star_wars.columns[3:9]]
+non_fans = star_wars[star_wars['Do you consider yourself to be a fan of the Star Wars film franchise?'] == 0][star_wars.columns[3:9]]
+​
+# Sum movie view columns and reset index
+fan_views = fans[fans.columns].sum().reset_index()
+non_fan_views = non_fans[non_fans.columns].sum().reset_index()
+​
+#Rename columns
+fan_views.columns = ['Episode', 'Views']
+non_fan_views.columns = ['Episode', 'Views']
+​
+#Replace 'seen' with 'episode'
+fan_views['Episode'] = fan_views['Episode'].str.replace('seen', 'episode')
+non_fan_views['Episode'] = non_fan_views['Episode'].str.replace('seen', 'episode')
+​
+#Reset index
+fan_views.set_index('Episode', inplace=True)
+non_fan_views.set_index('Episode', inplace=True)
+​
+#Plot fan vs non-fan movie rankings
+labels = ['Episode 1', 'Episode 2', 'Episode 3', 'Episode 4', 'Episode 5', 'Episode 6']
+​
+#Specifying the label locations and the width of the bars
+x = np.arange(len(labels))
+width = 0.35
+​
+# Converting series to lists
+fan_list = fan_views['Views'].values.tolist()   
+not_fan_list = non_fan_views['Views'].values.tolist()
+​
+fig, ax = plt.subplots(figsize = (10, 6))
+​
+# Allow secondary axis for non-fans since these numbers are much smaller than the fan numbers
+ax2 = ax.twinx()
+​
+ax.bar(x - width/2, fan_list, width, label = 'Fans', color='Blue', align='center')
+ax2.bar(x + width/2, not_fan_list, width, label = 'Not Fans', color='Red', align='center')
+​
+ax.set_title('Fan vs Non-Fan Views', fontsize=18)
+ax.set_xticks(x)
+ax.set_xticklabels(labels, fontsize=16)
+ax.set_ylabel('Number of Fan Views', fontsize=16)
+ax2.set_ylabel('Number of Non-Fan Views', fontsize = 16)
+ax.set_ylim(0, 600)
+​
+# Plot formatting for ax
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.spines['bottom'].set_visible(False)
+ax.tick_params(bottom="off", left="off", top="off", right="off")
+​
+# Plot formatting for ax2
+ax2.spines['top'].set_visible(False)
+ax2.spines['bottom'].set_visible(False)
+ax2.tick_params(bottom="off", left="off", top="off", right="off")
+​
+ax.legend(fontsize=16, frameon=False, loc='center left', bbox_to_anchor=(1.1, 1.0))
+ax2.legend(fontsize=16, frameon=False, loc='center left', bbox_to_anchor=(1.1, 0.9))
+​
+fig.tight_layout()
+​
+plt.show()
+From the above chart, we can see that fans and non-fans follow a similar pattern in terms of which episodes are watched the most and least. The only noticeable difference is for Fans, Episodes V and VI have nearly the same amount of views while non-fans have seen Episode V slightly more than Episode VI.
+
+Male vs Female Rankings and Views
+# Splitting the dataframe on the 'Gender' column and selecting only the ranking columns 
+males_rankings = star_wars[star_wars['Gender'] == 'Male'][star_wars.columns[9:15]]
+females_rankings = star_wars[star_wars['Gender'] == 'Female'][star_wars.columns[9:15]]
+​
+# Calculating the mean ranking for each movie by gender
+male_rankings_mean = males_rankings.mean().reset_index()
+female_rankings_mean = females_rankings.mean().reset_index()
+​
+#Replace 'ranking' with 'episode'
+male_rankings_mean['index'] = male_rankings_mean['index'].str.replace('ranking', 'episode')
+female_rankings_mean['index'] = female_rankings_mean['index'].str.replace('ranking', 'episode')
+​
+#Rename columns
+male_rankings_mean.columns = ['Episode', 'Ranking']
+female_rankings_mean.columns = ['Episode', 'Ranking']
+​
+#Reset index
+male_rankings_mean.set_index('Episode', inplace=True)
+female_rankings_mean.set_index('Episode', inplace=True)
+Pink
+#Plot male vs female movie rankings
+labels = ['Episode 1', 'Episode 2', 'Episode 3', 'Episode 4', 'Episode 5', 'Episode 6']
+​
+#Specifying the label locations and the width of the bars
+x = np.arange(len(labels))
+width = 0.35
+​
+# Converting series to lists
+male_list = male_rankings_mean['Ranking'].values.tolist()   
+female_list = female_rankings_mean['Ranking'].values.tolist()
+​
+fig, ax = plt.subplots(figsize = (10, 6))
+ax.bar(x - width/2, male_list, width, label = 'Male', color='Blue', align='center')
+ax.bar(x + width/2, female_list, width, label = 'Female', color='Pink', align='center')
+ax.set_title('Male vs Female Rankings', fontsize=18)
+ax.set_xticks(x)
+ax.set_xticklabels(labels, fontsize=16)
+ax.set_ylabel('Average Ranking', fontsize=16)
+ax.set_ylim(0, 6)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.spines['bottom'].set_visible(False)
+ax.tick_params(bottom="off", left="off", top="off", right="off")
+ax.legend(fontsize=16, frameon=False)
+​
+fig.tight_layout()
+​
+plt.show()
+Males and females rank the 6 movies fairly similar except for one exception. Males rank Episode IV better than Episode I while females are the opposite. Other than this difference, the order of the rankings between male and female is the same.
+
+# Split data into male vs female with views column
+male = star_wars[star_wars['Gender'] == 'Male'][star_wars.columns[3:9]]
+female = star_wars[star_wars['Gender'] == 'Female'][star_wars.columns[3:9]]
+​
+# Sum movie view columns and reset index
+male_views = fans[fans.columns].sum().reset_index()
+female_views = non_fans[non_fans.columns].sum().reset_index()
+​
+#Rename columns
+male_views.columns = ['Episode', 'Views']
+female_views.columns = ['Episode', 'Views']
+​
+#Replace 'seen' with 'episode'
+male_views['Episode'] = male_views['Episode'].str.replace('seen', 'episode')
+female_views['Episode'] = female_views['Episode'].str.replace('seen', 'episode')
+​
+#Reset index
+male_views.set_index('Episode', inplace=True)
+female_views.set_index('Episode', inplace=True)
+#Plot male vs female movie rankings
+labels = ['Episode 1', 'Episode 2', 'Episode 3', 'Episode 4', 'Episode 5', 'Episode 6']
+​
+#Specifying the label locations and the width of the bars
+x = np.arange(len(labels))
+width = 0.35
+​
+# Converting series to lists
+male_list = male_views['Views'].values.tolist()   
+female_list = female_views['Views'].values.tolist()
+​
+fig, ax = plt.subplots(figsize = (10, 6))
+​
+# Allow secondary axis for non-fans since these numbers are much smaller than the fan numbers
+ax2 = ax.twinx()
+​
+ax.bar(x - width/2, fan_list, width, label = 'Male', color='Blue', align='center')
+ax2.bar(x + width/2, not_fan_list, width, label = 'Female', color='Pink', align='center')
+​
+ax.set_title('Male vs Female Views', fontsize=18)
+ax.set_xticks(x)
+ax.set_xticklabels(labels, fontsize=16)
+ax.set_ylabel('Number of Male Views', fontsize=16)
+ax2.set_ylabel('Number of Female Views', fontsize = 16)
+ax.set_ylim(0, 600)
+​
+# Plot formatting for ax
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.spines['bottom'].set_visible(False)
+ax.tick_params(bottom="off", left="off", top="off", right="off")
+​
+# Plot formatting for ax2
+ax2.spines['top'].set_visible(False)
+ax2.spines['bottom'].set_visible(False)
+ax2.tick_params(bottom="off", left="off", top="off", right="off")
+​
+ax.legend(fontsize=16, frameon=False, loc='center left', bbox_to_anchor=(1.1, 1.0))
+ax2.legend(fontsize=16, frameon=False, loc='center left', bbox_to_anchor=(1.1, 0.9))
+​
+fig.tight_layout()
+​
+plt.show()
+The number of views per episode by gender shows that similar trends between males and females on which episodes are most and least watched. Episodes II and III are the least watched by both genders, while Episode I barely edges out Episode IV for more views amongst both genders. For males, Episodes V and VI are basically even in terms of number of views while females have clearly watched Episode V the most out of the 6 movies.
